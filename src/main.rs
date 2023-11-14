@@ -33,6 +33,8 @@ struct Globals {
     message: Vec<String>,
     /// the add files arg
     add: Vec<String>,
+    /// commit trip
+    commitmessage: bool,
     /// creating online repo, the repo name
     reponame: String,
     /// creating online repo, the repo description
@@ -46,8 +48,9 @@ struct Globals {
 impl Globals {
     fn new() -> Self {
         Self {
-            message: vec![String::from("-m")],
+            message: vec![String::from("commit"), String::from("-m")],
             add: vec![String::from("add")],
+            commitmessage: false,
             reponame: String::from(""),
             repodes: String::from(""),
             mode: false,
@@ -83,7 +86,7 @@ fn help(programName: &String) -> () {
 
 /// print {s} and exit(1)
 fn error(errorMessage: &String) -> () {
-    println!("{}", errorMessage);
+    print!("{}", errorMessage);
     exit(1);
 }
 
@@ -104,7 +107,7 @@ fn findInDir(path: &String, find: &String) -> bool {
 }
 */
 
-/// check if path_to_file exists [ returns: bool ]
+/// check if path_to_file exists
 fn doesFileExist<T>(filePath: &T) -> bool
 where
     T: std::convert::AsRef<std::ffi::OsStr>,
@@ -113,14 +116,14 @@ where
 }
 
 /// converts Output into String [ returns: String ]
-fn convertOuputToString(out: Output) -> String {
+fn OutputStdoutToString(out: Output) -> String {
     let string = String::from_utf8(out.stdout).unwrap();
     string.clone()
 }
 
 /// checks for untracked files in a repo
 fn untrackedFilesExists() -> bool {
-    let result = convertOuputToString(getOutput(&mut Command::new("/bin/git"), &[&"status"]));
+    let result = OutputStdoutToString(getOutput(&mut Command::new("/bin/git"), &[&"status"]));
     if result.find("Changes not staged for commit:") != None {
         true
     } else if result
@@ -134,7 +137,7 @@ fn untrackedFilesExists() -> bool {
         false
     }
 }
-///checks if git is init'ed
+/// checks if git is Initalized
 fn isGitInit() -> bool {
     return doesFileExist(&"./.git");
 }
@@ -172,7 +175,7 @@ fn createOnlineRepo(g: &mut Globals) -> () {
             error(&String::from("Curl is needed to create online repository"));
         }
         // run bash and curl
-        let returnString = convertOuputToString(getOutput(
+        let returnString = OutputStdoutToString(getOutput(
             &mut Command::new("/bin/bash"),
             &[&String::from("-c"), &runString],
         ));
@@ -195,7 +198,7 @@ fn createOnlineRepo(g: &mut Globals) -> () {
     ()
 }
 
-/// pass args c into Command cmd and run [ returns: Output ]
+/// pass <String,str> c into Command cmd and run
 fn getOutput<T>(cmd: &mut process::Command, c: &[&T]) -> Output
 where
     T: std::convert::AsRef<std::ffi::OsStr> + ?Sized,
@@ -203,14 +206,19 @@ where
     cmd.args(c).output().unwrap()
 }
 
-/// pass args into git and run and print the output [ returns () ]
+/// pass Vec c into Command cmd and run
+fn getOutputVec(cmd: &mut process::Command, c: Vec<String>) -> Output {
+    cmd.args(c).output().unwrap()
+}
+
+/// pass args into git and run and print the output
 fn runGit<T>(arr: &[&T]) -> ()
 where
     T: std::convert::AsRef<std::ffi::OsStr> + ?Sized,
 {
     print!(
         "{}",
-        convertOuputToString(getOutput(&mut process::Command::new("/bin/git"), arr))
+        OutputStdoutToString(getOutput(&mut process::Command::new("/bin/git"), arr))
     );
 }
 
@@ -225,7 +233,7 @@ struct options {
     init: u8,
 
     /// commit added files
-    #[arg(short, long,action = clap::ArgAction::Count)]
+    #[arg(short, long,action = clap::ArgAction::Count, group="_commit")]
     commit: u8,
 
     /// add files to commit
@@ -233,7 +241,7 @@ struct options {
     add: Option<Vec<String>>,
 
     /// add a commit message
-    #[arg(short, long)]
+    #[arg(short, long, requires = "_commit")]
     message: Option<Vec<String>>,
 
     /// create a branch
@@ -326,21 +334,42 @@ fn main() {
                 for i in pass {
                     G.add.push(i);
                 }
-                // getOutput(
-                //     &mut Command::new("/bin/git"),,
-                // );
+                let out: Output = getOutputVec(&mut Command::new("/bin/git"), G.add);
+                if (!out.status.success()) {
+                    error(&String::from_utf8(out.stderr).unwrap());
+                }
+            }
+            None => {}
+        }
+
+        match args.message {
+            Some(pass) => {
+                G.commitmessage = true;
+                for i in pass {
+                    G.message.push(i);
+                }
             }
             None => {}
         }
 
         match args.commit {
             0 => {}
-            _ => {}
-        }
+            _ => {
+                if (!isGitInit()) {
+                    error(&String::from("ERR: no local repository found here\n"));
+                }
 
-        match args.message {
-            Some(pass) => for i in pass {},
-            None => {}
+                if (!G.commitmessage) {
+                    G.message.push(String::from("made some changes"));
+                }
+
+                let out: Output = getOutputVec(&mut Command::new("/bin/git"), G.message);
+                if (!out.status.success()) {
+                    error(&String::from_utf8(out.stderr).unwrap());
+                } else {
+                    print!("{}", String::from_utf8(out.stdout).unwrap());
+                }
+            }
         }
 
         match args.switch {
@@ -349,6 +378,7 @@ fn main() {
             }
             None => {}
         }
+
         match args.origin {
             Some(pass) => {
                 let mut gitHubUsername: String = format!("git@github.com:{}", pass);
