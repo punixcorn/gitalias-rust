@@ -12,6 +12,7 @@
 use clap::{command, Args};
 // requires
 use clap::{Parser, Subcommand};
+use core::fmt;
 use std::env;
 use std::error::Error;
 use std::fmt::*;
@@ -115,15 +116,36 @@ where
     return path::Path::new(filePath).exists();
 }
 
+/// the output type to return when converting to string
+/// stdout or stderr
+enum outputType {
+    stdout,
+    stderr,
+}
+
+use outputType::{stderr, stdout};
+
 /// converts Output into String [ returns: String ]
-fn OutputStdoutToString(out: Output) -> String {
-    let string = String::from_utf8(out.stdout).unwrap();
-    string.clone()
+fn OutputToString(out: Output, outType: outputType) -> String {
+    let mut retString = String::new();
+    match outType {
+        stdout => {
+            retString = String::from_utf8(out.stdout).unwrap();
+        }
+        stderr => {
+            retString = String::from_utf8(out.stderr).unwrap();
+        }
+    }
+    retString
 }
 
 /// checks for untracked files in a repo
 fn untrackedFilesExists() -> bool {
-    let result = OutputStdoutToString(getOutput(&mut Command::new("/bin/git"), &[&"status"]));
+    let result = OutputToString(
+        getOutput(&mut Command::new("/bin/git"), &[&"status"]),
+        stdout,
+    );
+
     if result.find("Changes not staged for commit:") != None {
         true
     } else if result
@@ -175,10 +197,13 @@ fn createOnlineRepo(g: &mut Globals) -> () {
             error(&String::from("Curl is needed to create online repository"));
         }
         // run bash and curl
-        let returnString = OutputStdoutToString(getOutput(
-            &mut Command::new("/bin/bash"),
-            &[&String::from("-c"), &runString],
-        ));
+        let returnString = OutputToString(
+            getOutput(
+                &mut Command::new("/bin/bash"),
+                &[&String::from("-c"), &runString],
+            ),
+            stdout,
+        );
 
         // handle errors
         if returnString.find("Bad credentials") != None {
@@ -218,7 +243,10 @@ where
 {
     print!(
         "{}",
-        OutputStdoutToString(getOutput(&mut process::Command::new("/bin/git"), arr))
+        OutputToString(
+            getOutput(&mut process::Command::new("/bin/git"), arr),
+            stdout
+        )
     );
 }
 
@@ -336,7 +364,7 @@ fn main() {
                 }
                 let out: Output = getOutputVec(&mut Command::new("/bin/git"), G.add);
                 if (!out.status.success()) {
-                    error(&String::from_utf8(out.stderr).unwrap());
+                    error(&OutputToString(out, stderr));
                 }
             }
             None => {}
@@ -365,9 +393,9 @@ fn main() {
 
                 let out: Output = getOutputVec(&mut Command::new("/bin/git"), G.message);
                 if (!out.status.success()) {
-                    error(&String::from_utf8(out.stderr).unwrap());
+                    error(&OutputToString(out, stderr));
                 } else {
-                    print!("{}", String::from_utf8(out.stdout).unwrap());
+                    print!("{}", OutputToString(out, stdout));
                 }
             }
         }
@@ -402,7 +430,7 @@ fn main() {
                     (&["remote", "add", "origin", &gitHubUsername]),
                 );
                 if !addOrigin.status.success() {
-                    error(&String::from_utf8(addOrigin.stderr).unwrap());
+                    error(&OutputToString(addOrigin, stderr));
                 } else {
                     println!("origin added");
                 };
@@ -410,7 +438,7 @@ fn main() {
                 let changeBranch =
                     getOutput(&mut Command::new("/bin/git"), &["branch", "-M", "main"]);
                 if !changeBranch.status.success() {
-                    error(&String::from_utf8(changeBranch.stderr).unwrap());
+                    error(&OutputToString(changeBranch, stderr));
                 } else {
                     println!("branch switched to main");
                 }
@@ -420,11 +448,35 @@ fn main() {
                     (&["push", "-u", "origin", "main"]),
                 );
                 if !pushBranch.status.success() {
-                    error(&String::from_utf8(pushBranch.stderr).unwrap());
+                    error(&OutputToString(pushBranch, stderr));
                 } else {
                     println!("pushed to origin main");
                 }
                 println!("========== Done ==========");
+            }
+            None => {}
+        }
+
+        match args.Pull {
+            Some(pass) => {
+                let out: Output = getOutput(&mut Command::new("/bin/git"), &[&pass]);
+                if (!out.status.success()) {
+                    error(&OutputToString(out, stderr));
+                } else {
+                    print!("{}", OutputToString(out, stdout));
+                }
+            }
+            None => {}
+        }
+
+        match args.push {
+            Some(pass) => {
+                let out: Output = getOutput(&mut Command::new("/bin/git"), &[&pass]);
+                if (!out.status.success()) {
+                    error(&OutputToString(out, stderr));
+                } else {
+                    print!("{}", OutputToString(out, stdout));
+                }
             }
             None => {}
         }
